@@ -1,0 +1,1 @@
+rootProject.name = "insa-erp-crm-backend"

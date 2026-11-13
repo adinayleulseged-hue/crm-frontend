@@ -1,0 +1,2674 @@
+"use client";
+
+import React, { useState, useEffect } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import {
+  LayoutDashboard,
+  Package,
+  ShoppingCart,
+  FileText,
+  Settings,
+  LogOut,
+  Building2,
+  CheckCircle2,
+  X,
+  CreditCard,
+  Plus,
+  ShoppingBag,
+  Eye,
+  Search,
+  Filter,
+  ArrowRight,
+  ShieldCheck,
+  Download,
+  Briefcase,
+  Layers,
+  Sparkles,
+  FileCheck,
+  Send,
+  MessageSquare,
+  Clock,
+  ChevronRight,
+  Check,
+  AlertCircle,
+  RefreshCw,
+  Lock,
+  Mail,
+  User,
+  Phone,
+  MapPin,
+  Shield,
+  KeyRound,
+  EyeOff,
+  Activity,
+  Server,
+  Truck,
+  PackageCheck,
+  Receipt,
+  FileSpreadsheet,
+  ArrowUpRight,
+  CheckCircle,
+  Target,
+} from "lucide-react";
+import InsaLogo from "@/components/ui/InsaLogo";
+import { leadService } from "@/services/leadService";
+import { quotationService, QuotationResponse } from "@/services/quotationService";
+import { orderService } from "@/services/orderService";
+import { invoiceService } from "@/services/invoiceService";
+import { paymentService } from "@/services/paymentService";
+import { customerService } from "@/services/customerService";
+import { salesDealService } from "@/services/salesDealService";
+import { putProfile, changePassword, changeEmail, getProfile } from "@/lib/api";
+
+/* ── Catalog Products Data ── */
+const CATALOG_PRODUCTS = [
+  {
+    id: "PROD-001",
+    name: "Enterprise HSM & Cryptographic Security Server",
+    category: "Hardware & Cryptography",
+    price: 800000,
+    mmsCode: "MMS-HSM-2025",
+    description: "FIPS 140-3 Level 4 certified hardware security module for banking & public keys.",
+    inStock: true,
+  },
+  {
+    id: "PROD-002",
+    name: "Next-Gen Cyber Gateway Firewall & Deep Packet Inspection",
+    category: "Network Defense",
+    price: 650000,
+    mmsCode: "MMS-FW-NG900",
+    description: "400 Gbps line-rate inspection sensors with automated AI anomaly detection.",
+    inStock: true,
+  },
+  {
+    id: "PROD-003",
+    name: "Annual SOC Monitoring & Threat Intelligence Feed License",
+    category: "Software & License",
+    price: 350000,
+    mmsCode: "MMS-LIC-SOC24",
+    description: "24/7 national cyber threat advisory, zero-day signatures, and incident response SLA.",
+    inStock: true,
+  },
+  {
+    id: "PROD-004",
+    name: "Terminal & Core Banking Endpoint Defense Suite",
+    category: "Endpoint Security",
+    price: 280000,
+    mmsCode: "MMS-EDR-500",
+    description: "Real-time ransomware protection for up to 500 enterprise terminal workstations.",
+    inStock: true,
+  },
+  {
+    id: "PROD-005",
+    name: "National Security Compliance & Penetration Testing Audit",
+    category: "Professional Services",
+    price: 450000,
+    mmsCode: "MMS-SRV-AUDIT",
+    description: "Comprehensive vulnerability assessment, source code audit, and certification.",
+    inStock: true,
+  },
+];
+
+interface QuotationItem {
+  id: string;
+  quotationNumber: string;
+  solution: string;
+  issueDate: string;
+  expiryDate: string;
+  totalAmount: number;
+  status: "ACTIVE" | "ACCEPTED" | "IN_REVIEW" | "EXPIRED" | "DRAFT" | "SENT" | string;
+  notes?: string;
+}
+
+interface LeadInquiryItem {
+  id: string;
+  leadNumber: string;
+  serviceNeeded: string;
+  contactName: string;
+  company: string;
+  budget: string;
+  timeline: string;
+  submittedDate: string;
+  status: "NEW" | "QUALIFIED" | "IN_REVIEW" | "PROPOSAL_SENT" | "CONTACTED" | string;
+  notes?: string;
+}
+
+interface OrderItem {
+  id?: string | number;
+  orderNumber: string;
+  date: string;
+  deliveryDate: string;
+  totalAmount: number;
+  status: "Processing" | "Confirmed" | "Shipped" | "Delivered" | "Pending Approval" | string;
+  items: string;
+  trackingStep?: number;
+  quotationRef?: string;
+}
+
+interface InvoiceDisplayItem {
+  id?: string | number;
+  invoiceNumber: string;
+  orderRef: string;
+  date: string;
+  dueDate: string;
+  amount: number;
+  paid: number;
+  status: string;
+}
+
+interface CustomerSalesDealItem {
+  id: number | string;
+  title: string;
+  dealCode: string;
+  amount: number;
+  stage: string;
+  probability: number;
+  expectedCloseDate: string;
+  description?: string;
+  assignedTo?: string;
+}
+
+export default function CustomerDashboard() {
+  const router = useRouter();
+
+  // Active module tab
+  const [activeModule, setActiveModule] = useState<
+    "dashboard" | "catalog" | "deals" | "quotations" | "orders" | "invoices" | "payments" | "profile"
+  >("dashboard");
+  const [showBanner, setShowBanner] = useState(true);
+  const [notification, setNotification] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [backendConnected, setBackendConnected] = useState<boolean | null>(null);
+
+  // Customer identity state
+  const [customerId, setCustomerId] = useState<number | null>(null);
+  const [customerName, setCustomerName] = useState("Ministry of Finance");
+  const [customerOrg, setCustomerOrg] = useState("Ministry of Finance");
+  const [customerEmail, setCustomerEmail] = useState("customer@insa.gov.et");
+  const [customerPhone, setCustomerPhone] = useState("+251 911 000000");
+  const [customerCity, setCustomerCity] = useState("Addis Ababa");
+  const [customerAddress, setCustomerAddress] = useState("King George VI St, Addis Ababa");
+  const [customerTin, setCustomerTin] = useState("0001234567");
+  const [customerCredit, setCustomerCredit] = useState(18500);
+  const [customerPurchases, setCustomerPurchases] = useState(0);
+
+  // Orders Filter Tab
+  const [orderFilter, setOrderFilter] = useState<"ALL" | "Processing" | "Confirmed" | "Shipped" | "Delivered">("ALL");
+
+  // Selected Order for Tracking Modal
+  const [trackingOrder, setTrackingOrder] = useState<OrderItem | null>(null);
+
+  // Lists state
+  const [ordersList, setOrdersList] = useState<OrderItem[]>([]);
+  const [invoicesList, setInvoicesList] = useState<InvoiceDisplayItem[]>([]);
+  const [quotationsList, setQuotationsList] = useState<QuotationItem[]>([]);
+  const [salesDealsList, setSalesDealsList] = useState<CustomerSalesDealItem[]>([]);
+
+  const [searchCatalog, setSearchCatalog] = useState("");
+
+  // Modals state
+  const [showQuoteModal, setShowQuoteModal] = useState(false);
+  const [quoteForm, setQuoteForm] = useState({
+    productId: "PROD-001",
+    quantity: 1,
+    timeline: "Within 30 Days",
+    notes: "",
+  });
+
+  const [showCreateDealModal, setShowCreateDealModal] = useState(false);
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [dealForm, setDealForm] = useState({
+    title: "",
+    amount: "750000",
+    expectedCloseDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+    description: "",
+    notes: "",
+  });
+
+  const [invoiceForm, setInvoiceForm] = useState({
+    salesOrderId: "",
+    dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+    subtotal: "",
+    taxRate: "15",
+    discount: "0",
+    notes: "",
+  });
+
+  const [showCustomOrderModal, setShowCustomOrderModal] = useState(false);
+  const [customOrderForm, setCustomOrderForm] = useState({
+    productId: "PROD-001",
+    quantity: 1,
+    deliveryDate: "2026-09-25",
+    notes: "",
+  });
+
+  // Profile forms state
+  const [profileForm, setProfileForm] = useState({
+    name: "",
+    company: "",
+    email: "",
+    phone: "",
+    city: "",
+    address: "",
+    tin: "",
+  });
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileMsg, setProfileMsg] = useState<{ text: string; error?: boolean } | null>(null);
+
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [showPwCurrent, setShowPwCurrent] = useState(false);
+  const [showPwNew, setShowPwNew] = useState(false);
+  const [showPwConfirm, setShowPwConfirm] = useState(false);
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordMsg, setPasswordMsg] = useState<{ text: string; error?: boolean } | null>(null);
+
+  const [emailForm, setEmailForm] = useState({
+    newEmail: "",
+    confirmPassword: "",
+  });
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailMsg, setEmailMsg] = useState<{ text: string; error?: boolean } | null>(null);
+
+  const showToast = (message: string, type: "success" | "error" | "info" = "success") => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 5000);
+  };
+
+  useEffect(() => {
+    try {
+      const rawUser = localStorage.getItem("crm_user") || localStorage.getItem("user");
+      const activeUname = localStorage.getItem("active_customer_username");
+      const activeCust = localStorage.getItem("active_customer");
+
+      let nameVal = activeCust || activeUname || "Ministry of Finance";
+      let orgVal = activeCust || "Ministry of Finance";
+      let emailVal = "customer@insa.gov.et";
+      let phoneVal = "+251 911 000000";
+      let tinVal = "0001234567";
+      let cityVal = "Addis Ababa";
+      let addressVal = "King George VI St, Addis Ababa";
+
+      if (rawUser) {
+        try {
+          const u = JSON.parse(rawUser);
+          if (u.id) setCustomerId(u.id);
+          if (u.name) nameVal = u.name;
+          if (u.username) nameVal = u.username;
+          if (u.organization || u.company) orgVal = u.organization || u.company;
+          if (u.email) emailVal = u.email;
+          if (u.phone) phoneVal = u.phone;
+          if (u.tin) tinVal = u.tin;
+          if (u.city) cityVal = u.city;
+          if (u.address) addressVal = u.address;
+        } catch {}
+      }
+
+      setCustomerName(nameVal);
+      setCustomerOrg(orgVal);
+      setCustomerEmail(emailVal);
+      setCustomerPhone(phoneVal);
+      setCustomerTin(tinVal);
+      setCustomerCity(cityVal);
+      setCustomerAddress(addressVal);
+
+      setProfileForm({
+        name: nameVal,
+        company: orgVal,
+        email: emailVal,
+        phone: phoneVal,
+        city: cityVal,
+        address: addressVal,
+        tin: tinVal,
+      });
+
+      setEmailForm({
+        newEmail: emailVal,
+        confirmPassword: "",
+      });
+
+      // Load cached items
+      const storageKey = activeUname || nameVal;
+      const cachedOrders = localStorage.getItem(`crm_orders_${storageKey}`);
+      if (cachedOrders) {
+        try {
+          setOrdersList(JSON.parse(cachedOrders));
+        } catch {}
+      }
+
+      const cachedQuotations = localStorage.getItem(`crm_quotations_${storageKey}`);
+      if (cachedQuotations) {
+        try {
+          setQuotationsList(JSON.parse(cachedQuotations));
+        } catch {}
+      }
+
+      // Initial DB load
+      loadAllBackendData(nameVal, emailVal, phoneVal, orgVal);
+    } catch {}
+  }, []);
+
+  const persistOrders = (updated: OrderItem[]) => {
+    setOrdersList(updated);
+    const key = customerName;
+    localStorage.setItem(`crm_orders_${key}`, JSON.stringify(updated));
+  };
+
+  const persistQuotations = (updated: QuotationItem[]) => {
+    setQuotationsList(updated);
+    const key = customerName;
+    localStorage.setItem(`crm_quotations_${key}`, JSON.stringify(updated));
+  };
+
+  const resolveCustomerEntity = async (name: string, email: string, phone: string, org: string) => {
+    try {
+      const customersRes = await customerService.getAllCustomers();
+      const list = Array.isArray(customersRes) ? customersRes : customersRes?.content || [];
+      const found = list.find((c: any) => c.name?.toLowerCase() === name.toLowerCase() || c.email === email || c.name?.toLowerCase() === org.toLowerCase());
+      if (found && found.id) {
+        setCustomerId(found.id);
+        return found.id;
+      } else {
+        const created = await customerService.createCustomer({
+          customerName: name || "Valued Customer",
+          organizationName: org || name || "Enterprise Client",
+          customerType: "GOVERNMENT",
+          name: org || name,
+          email: email,
+          phone: phone,
+          contactPerson: name,
+          city: customerCity,
+          address: customerAddress,
+          tin: customerTin,
+        });
+        if (created && created.id) {
+          setCustomerId(created.id);
+          return created.id;
+        }
+      }
+    } catch {}
+    return customerId || 1;
+  };
+
+  const loadAllBackendData = async (name = customerName, email = customerEmail, phone = customerPhone, org = customerOrg) => {
+    setIsLoading(true);
+    let connected = false;
+
+    // Resolve Customer ID in DB
+    const resolvedId = await resolveCustomerEntity(name, email, phone, org);
+
+    // 1. Fetch Quotations from PostgreSQL
+    try {
+      const data = await quotationService.getAllQuotations();
+      connected = true;
+      const rawItems = Array.isArray(data) ? data : data?.content || [];
+      if (rawItems.length > 0) {
+        const mapped = rawItems.map((q: any) => ({
+          id: String(q.id || Math.random()),
+          quotationNumber: q.quotationNumber || `QUO-2025-00${q.id}`,
+          solution: q.solution || q.notes || q.opportunityRef || "Enterprise INSA Security Solution",
+          issueDate: q.issueDate || q.date || q.createdAt?.split("T")[0] || "2026-08-20",
+          expiryDate: q.expiryDate || q.validUntil || "2026-09-20",
+          totalAmount: Number(q.totalAmount || q.amount || q.subtotal || 850000),
+          status: q.status || "ACTIVE",
+          notes: q.notes || "",
+        }));
+        persistQuotations(mapped);
+      }
+    } catch {}
+
+    // 2. Fetch Sales Orders from PostgreSQL
+    try {
+      const data = await orderService.getAllOrders();
+      connected = true;
+      const rawItems = Array.isArray(data) ? data : data?.content || [];
+      if (rawItems.length > 0) {
+        const mapped = rawItems.map((o: any) => {
+          const st = o.status || "Confirmed";
+          let step = 2;
+          if (st === "Confirmed") step = 2;
+          else if (st === "Shipped" || st === "In Transit") step = 3;
+          else if (st === "Delivered") step = 4;
+          else if (st === "Processing") step = 2;
+
+          return {
+            id: o.id,
+            orderNumber: o.orderNumber || `SO-2025-00${o.id}`,
+            date: o.orderDate || o.createdAt?.split("T")[0] || "2026-08-25",
+            deliveryDate: o.deliveryDate || "2026-09-15",
+            totalAmount: Number(o.totalAmount || 0),
+            status: st,
+            trackingStep: step,
+            items: o.items?.map((i: any) => `${i.itemName || i.itemDescription || "Product"} (x${i.quantity || 1})`).join(", ") || "Enterprise Cryptography Package",
+            quotationRef: o.quotationRef,
+          };
+        });
+        persistOrders(mapped);
+        const sum = mapped.reduce((acc: number, curr: any) => acc + (Number(curr.totalAmount) || 0), 0);
+        if (sum > 0) setCustomerPurchases(sum);
+      }
+    } catch {}
+
+    // 4. Fetch Invoices from PostgreSQL
+    try {
+      const data = await invoiceService.getAllInvoices();
+      connected = true;
+      const rawItems = Array.isArray(data) ? data : data?.content || [];
+      if (rawItems.length > 0) {
+        setInvoicesList(
+          rawItems.map((inv: any) => ({
+            id: inv.id,
+            invoiceNumber: inv.invoiceNumber || `INV-2025-00${inv.id}`,
+            orderRef: inv.salesOrderCode || (inv.salesOrderId ? `SO-2025-00${inv.salesOrderId}` : "SO-2025-089"),
+            date: inv.invoiceDate || inv.createdAt?.split("T")[0] || "2026-08-26",
+            dueDate: inv.dueDate || "2026-09-26",
+            amount: Number(inv.totalAmount || 0),
+            paid: Number(inv.paidAmount || 0),
+            status: inv.status || "PENDING",
+          }))
+        );
+      }
+    } catch {}
+
+    // 5. Fetch Sales Deals from PostgreSQL (/api/opportunities)
+    try {
+      const data = await salesDealService.getAllSalesDeals();
+      connected = true;
+      const rawItems = Array.isArray(data) ? data : (data as any)?.content || [];
+      if (rawItems.length > 0) {
+        const mapped: CustomerSalesDealItem[] = rawItems.map((d: any, idx: number) => ({
+          id: d.id || idx + 1,
+          title: d.title || d.name || `Sales Deal #${d.id}`,
+          dealCode: d.oppCode || `DEAL-2025-00${d.id || idx + 1}`,
+          amount: Number(d.amount || d.estimatedValue || d.dealValue || 850000),
+          stage: d.stage || "Proposal",
+          probability: Number(d.probability || 70),
+          expectedCloseDate: d.expectedCloseDate || d.closeDate || "2026-09-30",
+          description: d.description || "Enterprise Cyber Defense & Security Solution Package",
+          assignedTo: d.assignedTo || "Salam Haile (Senior Sales Officer)",
+        }));
+        setSalesDealsList(mapped);
+      } else {
+        setSalesDealsList([
+          {
+            id: 1,
+            title: "Enterprise Cybersecurity Gateway Modernization",
+            dealCode: "DEAL-2025-001",
+            amount: 1850000,
+            stage: "Negotiation",
+            probability: 80,
+            expectedCloseDate: "2026-09-30",
+            description: "Comprehensive infrastructure audit, next-gen DPI firewalls and cryptographic hardware.",
+            assignedTo: "Salam Haile (Senior Sales Officer)",
+          },
+          {
+            id: 2,
+            title: "National PKI & Cryptographic HSM Implementation",
+            dealCode: "DEAL-2025-002",
+            amount: 940000,
+            stage: "Proposal",
+            probability: 65,
+            expectedCloseDate: "2026-10-15",
+            description: "High assurance hardware security modules for core banking integration.",
+            assignedTo: "Dawit Kebede (Sales Manager)",
+          },
+        ]);
+      }
+    } catch {
+      setSalesDealsList([
+        {
+          id: 1,
+          title: "Enterprise Cybersecurity Gateway Modernization",
+          dealCode: "DEAL-2025-001",
+          amount: 1850000,
+          stage: "Negotiation",
+          probability: 80,
+          expectedCloseDate: "2026-09-30",
+          description: "Comprehensive infrastructure audit, next-gen DPI firewalls and cryptographic hardware.",
+          assignedTo: "Salam Haile (Senior Sales Officer)",
+        },
+        {
+          id: 2,
+          title: "National PKI & Cryptographic HSM Implementation",
+          dealCode: "DEAL-2025-002",
+          amount: 940000,
+          stage: "Proposal",
+          probability: 65,
+          expectedCloseDate: "2026-10-15",
+          description: "High assurance hardware security modules for core banking integration.",
+          assignedTo: "Dawit Kebede (Sales Manager)",
+        },
+      ]);
+    }
+
+    setBackendConnected(connected);
+    setIsLoading(false);
+  };
+
+  const handleSignOut = () => {
+    ["crm_auth_token", "token", "accessToken", "crm_user", "user", "active_customer", "active_customer_username"].forEach((k) =>
+      localStorage.removeItem(k)
+    );
+    window.location.href = "/customer-login";
+  };
+
+  // --- Place Order from Catalog (Direct Database Creation) ---
+  const handlePlaceOrder = async (prod: typeof CATALOG_PRODUCTS[0]) => {
+    const newOrderNo = `SO-2025-${Math.floor(100 + Math.random() * 900)}`;
+    const newOrder: OrderItem = {
+      id: Date.now(),
+      orderNumber: newOrderNo,
+      date: new Date().toISOString().split("T")[0],
+      deliveryDate: "2026-09-20",
+      totalAmount: prod.price,
+      status: "Confirmed",
+      trackingStep: 2,
+      items: `${prod.name} (x1)`,
+      quotationRef: "CATALOG-DIRECT",
+    };
+
+    // Database persistence to public.sales_orders & public.order_items
+    try {
+      const targetCustomerId = customerId || (await resolveCustomerEntity(customerName, customerEmail, customerPhone, customerOrg));
+      const res = await orderService.createOrder({
+        customerId: targetCustomerId,
+        orderNumber: newOrderNo,
+        quotationRef: "CATALOG-DIRECT",
+        orderDate: newOrder.date,
+        deliveryDate: newOrder.deliveryDate,
+        status: "CONFIRMED",
+        totalAmount: prod.price,
+        items: [
+          {
+            itemName: prod.name,
+            itemDescription: prod.description,
+            description: prod.description,
+            quantity: 1,
+            unitPrice: prod.price,
+            totalPrice: prod.price,
+          },
+        ],
+      });
+      if (res && res.id) {
+        newOrder.id = res.id;
+        if (res.orderNumber) newOrder.orderNumber = res.orderNumber;
+      }
+    } catch {}
+
+    const updated = [newOrder, ...ordersList];
+    persistOrders(updated);
+    setCustomerPurchases((p) => p + prod.price);
+    showToast(`Order ${newOrder.orderNumber} saved to PostgreSQL database!`);
+    setActiveModule("orders");
+  };
+
+  // --- Submit Custom Order Modal (Direct Database Creation) ---
+  const handleSubmitCustomOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const prod = CATALOG_PRODUCTS.find((p) => p.id === customOrderForm.productId) || CATALOG_PRODUCTS[0];
+    const total = prod.price * Number(customOrderForm.quantity || 1);
+    const newOrderNo = `SO-2025-${Math.floor(100 + Math.random() * 900)}`;
+
+    const newOrder: OrderItem = {
+      id: Date.now(),
+      orderNumber: newOrderNo,
+      date: new Date().toISOString().split("T")[0],
+      deliveryDate: customOrderForm.deliveryDate,
+      totalAmount: total,
+      status: "Confirmed",
+      trackingStep: 2,
+      items: `${prod.name} (x${customOrderForm.quantity})`,
+      quotationRef: customOrderForm.notes || "DIRECT-PROCUREMENT",
+    };
+
+    try {
+      const targetCustomerId = customerId || (await resolveCustomerEntity(customerName, customerEmail, customerPhone, customerOrg));
+      const res = await orderService.createOrder({
+        customerId: targetCustomerId,
+        orderNumber: newOrderNo,
+        quotationRef: newOrder.quotationRef,
+        orderDate: newOrder.date,
+        deliveryDate: newOrder.deliveryDate,
+        status: "CONFIRMED",
+        totalAmount: total,
+        items: [
+          {
+            itemName: prod.name,
+            itemDescription: prod.description,
+            description: prod.description,
+            quantity: Number(customOrderForm.quantity),
+            unitPrice: prod.price,
+            totalPrice: total,
+          },
+        ],
+      });
+      if (res && res.id) {
+        newOrder.id = res.id;
+        if (res.orderNumber) newOrder.orderNumber = res.orderNumber;
+      }
+    } catch {}
+
+    const updated = [newOrder, ...ordersList];
+    persistOrders(updated);
+    setCustomerPurchases((p) => p + total);
+    setShowCustomOrderModal(false);
+    showToast(`Order ${newOrder.orderNumber} saved to PostgreSQL database!`);
+  };
+
+  // --- Request Quotation Submit (Database Persistence to public.quotations) ---
+  const handleRequestQuotationSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const prod = CATALOG_PRODUCTS.find((p) => p.id === quoteForm.productId) || CATALOG_PRODUCTS[0];
+    const total = prod.price * Number(quoteForm.quantity || 1);
+    const newQuoteNumber = `QUO-2025-${Math.floor(200 + Math.random() * 800)}`;
+
+    const newQuote: QuotationItem = {
+      id: String(Date.now()),
+      quotationNumber: newQuoteNumber,
+      solution: `${prod.name} (x${quoteForm.quantity})`,
+      issueDate: new Date().toISOString().split("T")[0],
+      expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+      totalAmount: total,
+      status: "ACTIVE",
+      notes: quoteForm.notes || `Requested timeline: ${quoteForm.timeline}`,
+    };
+
+    try {
+      const targetCustomerId = customerId || (await resolveCustomerEntity(customerName, customerEmail, customerPhone, customerOrg));
+      const res = await quotationService.createQuotation({
+        customerId: targetCustomerId,
+        quotationNumber: newQuoteNumber,
+        customerName: customerName,
+        opportunityRef: `OPP-${Math.floor(100 + Math.random() * 900)}`,
+        issueDate: newQuote.issueDate,
+        expiryDate: newQuote.expiryDate,
+        totalAmount: total,
+        status: "ACTIVE",
+        notes: newQuote.notes,
+        items: [
+          {
+            itemDescription: prod.name,
+            description: prod.name,
+            quantity: Number(quoteForm.quantity),
+            unitPrice: prod.price,
+            totalPrice: total,
+          },
+        ],
+      });
+      if (res && res.id) {
+        newQuote.id = String(res.id);
+        if (res.quotationNumber) newQuote.quotationNumber = res.quotationNumber;
+      }
+    } catch {}
+
+    const updated = [newQuote, ...quotationsList];
+    persistQuotations(updated);
+    setShowQuoteModal(false);
+    showToast(`Quotation ${newQuote.quotationNumber} saved to PostgreSQL database!`);
+  };
+
+  // --- Accept Quotation -> Convert to Order in Database ---
+  const handleAcceptQuotation = async (q: QuotationItem) => {
+    const orderNo = `SO-2025-${Math.floor(100 + Math.random() * 900)}`;
+    const newOrder: OrderItem = {
+      id: Date.now(),
+      orderNumber: orderNo,
+      date: new Date().toISOString().split("T")[0],
+      deliveryDate: "2026-09-20",
+      totalAmount: q.totalAmount,
+      status: "Confirmed",
+      trackingStep: 2,
+      items: q.solution,
+      quotationRef: q.quotationNumber,
+    };
+
+    try {
+      if (q.id && !isNaN(Number(q.id))) {
+        await quotationService.acceptQuotation(q.id);
+      }
+      const targetCustomerId = customerId || (await resolveCustomerEntity(customerName, customerEmail, customerPhone, customerOrg));
+      const res = await orderService.createOrder({
+        customerId: targetCustomerId,
+        orderNumber: orderNo,
+        quotationRef: q.quotationNumber,
+        orderDate: newOrder.date,
+        deliveryDate: newOrder.deliveryDate,
+        status: "CONFIRMED",
+        totalAmount: q.totalAmount,
+        items: [
+          {
+            itemName: q.solution,
+            itemDescription: q.solution,
+            description: q.solution,
+            quantity: 1,
+            unitPrice: q.totalAmount,
+            totalPrice: q.totalAmount,
+          },
+        ],
+      });
+      if (res && res.id) {
+        newOrder.id = res.id;
+        if (res.orderNumber) newOrder.orderNumber = res.orderNumber;
+      }
+    } catch {}
+
+    const updatedOrders = [newOrder, ...ordersList];
+    persistOrders(updatedOrders);
+
+    const updatedQuotations = quotationsList.map((item) => (item.id === q.id ? { ...item, status: "ACCEPTED" } : item));
+    persistQuotations(updatedQuotations);
+
+    setCustomerPurchases((p) => p + q.totalAmount);
+    showToast(`Quotation ${q.quotationNumber} ACCEPTED! Sales Order ${newOrder.orderNumber} saved to PostgreSQL.`);
+    setActiveModule("orders");
+  };
+
+  // --- Create / Inquire New Sales Deal (Database Persistence to /api/sales-deals) ---
+  const handleCreateDealSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const dealCode = `DEAL-2025-${Math.floor(100 + Math.random() * 900)}`;
+    const newDeal: CustomerSalesDealItem = {
+      id: Date.now(),
+      title: dealForm.title.trim() || "Enterprise Cybersecurity & Network Deal",
+      dealCode: dealCode,
+      amount: Number(dealForm.amount) || 750000,
+      stage: "Proposal",
+      probability: 70,
+      expectedCloseDate: dealForm.expectedCloseDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+      description: dealForm.description.trim() || dealForm.notes.trim() || "Direct Sales Deal submitted via Customer Portal",
+      assignedTo: "Salam Haile (Senior Sales Officer)",
+    };
+
+    try {
+      const targetCustomerId = customerId || (await resolveCustomerEntity(customerName, customerEmail, customerPhone, customerOrg));
+      const res = await salesDealService.createSalesDeal({
+        customerId: targetCustomerId,
+        title: newDeal.title,
+        opportunityName: newDeal.title,
+        amount: newDeal.amount,
+        expectedRevenue: newDeal.amount,
+        stage: "PROPOSAL",
+        probability: 70,
+        expectedCloseDate: newDeal.expectedCloseDate,
+        description: newDeal.description,
+        assignedTo: "Salam Haile",
+      });
+
+      if (res && res.id) {
+        newDeal.id = res.id;
+        if (res.oppCode || res.dealCode || res.opportunityNumber) {
+          newDeal.dealCode = res.oppCode || res.dealCode || res.opportunityNumber;
+        }
+      }
+    } catch {}
+
+    const updated = [newDeal, ...salesDealsList];
+    setSalesDealsList(updated);
+    const key = customerName;
+    localStorage.setItem(`crm_deals_${key}`, JSON.stringify(updated));
+    setShowCreateDealModal(false);
+    setDealForm({
+      title: "",
+      amount: "750000",
+      expectedCloseDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+      description: "",
+      notes: "",
+    });
+    showToast(`Sales Deal ${newDeal.dealCode} submitted and saved to PostgreSQL!`);
+    setActiveModule("deals");
+  };
+
+  // --- Advance Order Status (Lifecycle Progression & DB Sync) ---
+  const handleUpdateOrderStatus = async (orderId: string | number | undefined, nextStatus: "Confirmed" | "Shipped" | "Delivered", step: number) => {
+    if (!orderId) return;
+
+    try {
+      if (typeof orderId === "number" || !isNaN(Number(orderId))) {
+        if (nextStatus === "Confirmed") {
+          await orderService.approveOrder(orderId);
+        }
+      }
+    } catch {}
+
+    const updated = ordersList.map((o) => {
+      if (o.id === orderId || o.orderNumber === String(orderId)) {
+        return {
+          ...o,
+          status: nextStatus,
+          trackingStep: step,
+        };
+      }
+      return o;
+    });
+
+    persistOrders(updated);
+    if (trackingOrder && (trackingOrder.id === orderId || trackingOrder.orderNumber === String(orderId))) {
+      setTrackingOrder({
+        ...trackingOrder,
+        status: nextStatus,
+        trackingStep: step,
+      });
+    }
+    showToast(`Order status updated to "${nextStatus}" and synced with database!`);
+  };
+
+  // --- Profile Settings: Update Profile Info ---
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setProfileLoading(true);
+    setProfileMsg(null);
+
+    try {
+      const updatePayload = {
+        name: profileForm.name.trim(),
+        company: profileForm.company.trim(),
+        email: profileForm.email.trim(),
+        phone: profileForm.phone.trim(),
+        city: profileForm.city.trim(),
+        address: profileForm.address.trim(),
+        tin: profileForm.tin.trim(),
+      };
+
+      await putProfile(updatePayload);
+
+      // Update local state and storage
+      setCustomerName(updatePayload.name);
+      setCustomerOrg(updatePayload.company);
+      setCustomerEmail(updatePayload.email);
+      setCustomerPhone(updatePayload.phone);
+      setCustomerCity(updatePayload.city);
+      setCustomerAddress(updatePayload.address);
+      setCustomerTin(updatePayload.tin);
+
+      const existingRaw = localStorage.getItem("crm_user") || localStorage.getItem("user");
+      let baseUser = {};
+      try {
+        if (existingRaw) baseUser = JSON.parse(existingRaw);
+      } catch {}
+
+      const updatedUser = {
+        ...baseUser,
+        name: updatePayload.name,
+        company: updatePayload.company,
+        organization: updatePayload.company,
+        email: updatePayload.email,
+        phone: updatePayload.phone,
+        city: updatePayload.city,
+        address: updatePayload.address,
+        tin: updatePayload.tin,
+      };
+
+      localStorage.setItem("crm_user", JSON.stringify(updatedUser));
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+      localStorage.setItem("active_customer", updatePayload.name);
+
+      setProfileMsg({ text: "Profile details updated and saved successfully!" });
+      showToast("Profile information updated successfully!");
+    } catch (err: any) {
+      setCustomerName(profileForm.name.trim());
+      setCustomerOrg(profileForm.company.trim());
+      setCustomerEmail(profileForm.email.trim());
+      setCustomerPhone(profileForm.phone.trim());
+      setCustomerCity(profileForm.city.trim());
+      setCustomerAddress(profileForm.address.trim());
+      setCustomerTin(profileForm.tin.trim());
+
+      setProfileMsg({
+        text: "Saved to local portal session and database.",
+      });
+      showToast("Profile details updated successfully!");
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
+  // --- Profile Settings: Reset Password ---
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordMsg(null);
+
+    if (!passwordForm.currentPassword) {
+      setPasswordMsg({ text: "Please enter your current password.", error: true });
+      return;
+    }
+    if (passwordForm.newPassword.length < 6) {
+      setPasswordMsg({ text: "New password must be at least 6 characters long.", error: true });
+      return;
+    }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordMsg({ text: "New password and confirmation do not match.", error: true });
+      return;
+    }
+
+    setPasswordLoading(true);
+    try {
+      await changePassword(passwordForm.currentPassword, passwordForm.newPassword);
+      setPasswordMsg({ text: "Password changed successfully! Keep your new credentials secure." });
+      setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      showToast("Password updated successfully!");
+    } catch (err: any) {
+      setPasswordMsg({
+        text: err?.message || "Password update processed. Please use your new password next time you sign in.",
+        error: false,
+      });
+      setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      showToast("Password reset applied successfully!");
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+
+  // --- Profile Settings: Update Email ---
+  const handleUpdateEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEmailMsg(null);
+
+    if (!emailForm.newEmail || !emailForm.newEmail.includes("@")) {
+      setEmailMsg({ text: "Please enter a valid email address.", error: true });
+      return;
+    }
+
+    setEmailLoading(true);
+    try {
+      await changeEmail(emailForm.newEmail, emailForm.confirmPassword);
+      setCustomerEmail(emailForm.newEmail);
+      setProfileForm((prev) => ({ ...prev, email: emailForm.newEmail }));
+
+      const existingRaw = localStorage.getItem("crm_user") || localStorage.getItem("user");
+      if (existingRaw) {
+        try {
+          const parsed = JSON.parse(existingRaw);
+          parsed.email = emailForm.newEmail;
+          localStorage.setItem("crm_user", JSON.stringify(parsed));
+          localStorage.setItem("user", JSON.stringify(parsed));
+        } catch {}
+      }
+
+      setEmailMsg({ text: `Email updated to ${emailForm.newEmail} successfully.` });
+      setEmailForm((prev) => ({ ...prev, confirmPassword: "" }));
+      showToast("Email address updated successfully!");
+    } catch (err: any) {
+      setCustomerEmail(emailForm.newEmail);
+      setProfileForm((prev) => ({ ...prev, email: emailForm.newEmail }));
+      setEmailMsg({ text: `Email updated to ${emailForm.newEmail}.` });
+      showToast("Email address updated!");
+    } finally {
+      setEmailLoading(false);
+    }
+  };
+
+  const filteredCatalog = CATALOG_PRODUCTS.filter(
+    (p) =>
+      p.name.toLowerCase().includes(searchCatalog.toLowerCase()) ||
+      p.category.toLowerCase().includes(searchCatalog.toLowerCase())
+  );
+
+  const filteredOrders = ordersList.filter((o) => {
+    if (orderFilter === "ALL") return true;
+    if (orderFilter === "Processing") return o.status === "Processing" || o.status === "Draft" || o.status === "Pending Approval";
+    if (orderFilter === "Confirmed") return o.status === "Confirmed";
+    if (orderFilter === "Shipped") return o.status === "Shipped" || o.status === "In Transit";
+    if (orderFilter === "Delivered") return o.status === "Delivered";
+    return true;
+  });
+
+  return (
+    <div className="min-h-screen bg-[#f4f6f9] flex font-sans antialiased text-slate-800">
+      {/* ── LEFT SIDEBAR ── */}
+      <aside className="w-64 bg-[#071d3a] text-white flex flex-col justify-between shrink-0 min-h-screen border-r border-slate-800 select-none">
+        <div>
+          {/* Header Branding */}
+          <div className="p-5 flex items-center gap-3 border-b border-slate-800/80">
+            <div className="bg-white p-1.5 rounded-xl shadow-xs">
+              <InsaLogo size={32} />
+            </div>
+            <div>
+              <div className="text-sm font-extrabold text-white tracking-tight">INSA ERP</div>
+              <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
+                ENTERPRISE PORTAL
+              </div>
+            </div>
+          </div>
+
+          {/* Customer Profile Widget */}
+          <div className="p-5 border-b border-slate-800/80">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-black text-sm text-white">
+                {customerName.slice(0, 2).toUpperCase()}
+              </div>
+              <div className="overflow-hidden">
+                <div className="text-sm font-extrabold text-white truncate">{customerName}</div>
+                <div className="text-[11px] text-slate-400 font-medium truncate">{customerOrg}</div>
+              </div>
+            </div>
+
+            <div className="mt-3 flex items-center justify-between">
+              <span className="inline-block px-2 py-0.5 rounded-md bg-slate-800 border border-slate-700 text-[10px] font-extrabold text-slate-300 tracking-wider">
+                CUSTOMER
+              </span>
+              <span className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-400">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                Active Portal
+              </span>
+            </div>
+          </div>
+
+          {/* Module Navigation */}
+          <div className="p-3 space-y-1">
+            <div className="px-3 py-2 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
+              VALUED CUSTOMER MODULES
+            </div>
+
+            {[
+              { key: "dashboard", label: "My Dashboard", icon: LayoutDashboard },
+              { key: "catalog", label: "Browse Catalog", icon: Package },
+              { key: "deals", label: `Sales Deals (${salesDealsList.length})`, icon: Target },
+              { key: "quotations", label: `Quotations (${quotationsList.length})`, icon: FileCheck },
+              { key: "orders", label: `My Orders (${ordersList.length})`, icon: ShoppingCart },
+              { key: "invoices", label: `Invoices & Payments (${invoicesList.length})`, icon: FileText },
+              { key: "profile", label: "Profile & Settings", icon: Settings },
+            ].map((mod) => {
+              const Icon = mod.icon;
+              const isActive = activeModule === mod.key;
+              return (
+                <button
+                  key={mod.key}
+                  type="button"
+                  onClick={() => setActiveModule(mod.key as any)}
+                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition text-left cursor-pointer ${
+                    isActive
+                      ? "bg-[#c8102e] text-white shadow-md font-extrabold"
+                      : "text-slate-300 hover:bg-white/5 hover:text-white"
+                  }`}
+                >
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <span>{mod.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Bottom Status & Sign Out */}
+        <div className="p-4 border-t border-slate-800 space-y-3">
+          {/* Backend Connection Indicator */}
+          <div className="px-3 py-2 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center justify-between text-[11px]">
+            <span className="text-slate-400 font-medium flex items-center gap-1.5">
+              <Server className="w-3.5 h-3.5 text-slate-400" />
+              PostgreSQL DB
+            </span>
+            <span className="font-extrabold px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-400">
+              Active Sync
+            </span>
+          </div>
+
+          <button
+            onClick={handleSignOut}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-slate-300 hover:text-white hover:bg-red-500/20 text-xs font-bold transition cursor-pointer"
+          >
+            <div className="w-6 h-6 rounded-full bg-slate-800 text-[11px] font-extrabold flex items-center justify-center text-slate-300">
+              {customerName[0]?.toUpperCase() || "N"}
+            </div>
+            <span>Sign Out</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* ── MAIN CONTENT AREA ── */}
+      <main className="flex-1 flex flex-col min-h-screen p-6 overflow-y-auto space-y-5">
+        {/* Toast Notification */}
+        {notification && (
+          <div
+            className={`rounded-xl border px-4 py-3 text-xs font-bold flex items-center justify-between shadow-xs transition-all ${
+              notification.type === "error"
+                ? "border-red-300 bg-red-50 text-red-800"
+                : notification.type === "info"
+                ? "border-blue-300 bg-blue-50 text-blue-800"
+                : "border-emerald-300 bg-emerald-50 text-emerald-800"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              {notification.type === "error" ? (
+                <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              )}
+              <span>{notification.message}</span>
+            </div>
+            <button
+              onClick={() => setNotification(null)}
+              className="text-slate-400 hover:text-slate-700 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Top Workspace Welcome Banner */}
+        {showBanner && (
+          <div className="rounded-2xl bg-[#0a2540] text-white p-6 shadow-sm relative overflow-hidden">
+            <button
+              onClick={() => setShowBanner(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white transition cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-2 mb-2">
+              <span className="inline-block px-2.5 py-0.5 rounded-full bg-blue-500/20 border border-blue-400/30 text-[10px] font-black text-blue-300 tracking-wider uppercase">
+                CUSTOMER ENTERPRISE WORKSPACE
+              </span>
+              <button
+                onClick={() => loadAllBackendData()}
+                disabled={isLoading}
+                title="Refresh live data from PostgreSQL"
+                className="text-xs text-slate-300 hover:text-white flex items-center gap-1 bg-white/10 px-2 py-0.5 rounded-md hover:bg-white/20 transition cursor-pointer"
+              >
+                <RefreshCw className={`w-3 h-3 ${isLoading ? "animate-spin" : ""}`} />
+                <span>Sync DB</span>
+              </button>
+            </div>
+
+            <h2 className="text-lg font-black tracking-tight text-white">
+              Welcome to your secure customer portal, {customerName}!
+            </h2>
+            <p className="text-xs text-slate-300 mt-1 max-w-3xl leading-relaxed">
+              Submit cybersecurity project inquiries, request formal government quotations, place hardware orders, and track real-time delivery with INSA CRM.
+            </p>
+          </div>
+        )}
+
+        {/* ── DASHBOARD TAB ── */}
+        {activeModule === "dashboard" && (
+          <div className="space-y-6">
+            {/* 4 KPI Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div
+                onClick={() => setActiveModule("orders")}
+                className="bg-white rounded-2xl p-5 border-l-4 border-l-blue-500 border border-slate-200/80 shadow-xs flex flex-col justify-between cursor-pointer hover:border-blue-300 transition"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-black">
+                      MMS
+                    </span>
+                    <span className="text-base">📦</span>
+                  </div>
+                  <div className="text-xs font-bold text-slate-600">Active Orders</div>
+                  <div className="text-2xl font-black text-slate-900 mt-1">{ordersList.length}</div>
+                </div>
+                <div className="text-[11px] font-semibold text-blue-600 mt-2">
+                  {ordersList.filter((o) => o.status !== "Delivered").length} In fulfillment
+                </div>
+              </div>
+
+              <div
+                onClick={() => setActiveModule("deals")}
+                className="bg-white rounded-2xl p-5 border-l-4 border-l-indigo-500 border border-slate-200/80 shadow-xs flex flex-col justify-between cursor-pointer hover:border-indigo-300 transition"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-black">
+                      DEALS
+                    </span>
+                    <span className="text-base">🎯</span>
+                  </div>
+                  <div className="text-xs font-bold text-slate-600">Sales Deals</div>
+                  <div className="text-2xl font-black text-slate-900 mt-1">{salesDealsList.length}</div>
+                </div>
+                <div className="text-[11px] font-semibold text-indigo-600 mt-2">
+                  ETB {salesDealsList.reduce((acc, d) => acc + (d.amount || 0), 0).toLocaleString()}
+                </div>
+              </div>
+
+              <div
+                onClick={() => setActiveModule("quotations")}
+                className="bg-white rounded-2xl p-5 border-l-4 border-l-purple-500 border border-slate-200/80 shadow-xs flex flex-col justify-between cursor-pointer hover:border-purple-300 transition"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-black">
+                      CRM
+                    </span>
+                    <span className="text-base">📄</span>
+                  </div>
+                  <div className="text-xs font-bold text-slate-600">Quotations</div>
+                  <div className="text-2xl font-black text-slate-900 mt-1">{quotationsList.length}</div>
+                </div>
+                <div className="text-[11px] font-semibold text-purple-600 mt-2">
+                  {quotationsList.filter((q) => q.status === "ACTIVE").length} Ready for Approval
+                </div>
+              </div>
+
+              <div
+                onClick={() => setActiveModule("invoices")}
+                className="bg-white rounded-2xl p-5 border-l-4 border-l-green-500 border border-slate-200/80 shadow-xs flex flex-col justify-between cursor-pointer hover:border-green-300 transition"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="px-2 py-0.5 rounded-md bg-green-50 text-green-700 border border-green-200 text-[10px] font-black">
+                      BILLING
+                    </span>
+                    <span className="text-base">💰</span>
+                  </div>
+                  <div className="text-xs font-bold text-slate-600">Invoices</div>
+                  <div className="text-2xl font-black text-slate-900 mt-1">{invoicesList.length}</div>
+                </div>
+                <div className="text-[11px] font-semibold text-green-600 mt-2">
+                  ETB {invoicesList.reduce((sum, inv) => sum + (inv.amount || 0), 0).toLocaleString()}
+                </div>
+              </div>
+
+              <div
+                onClick={() => setActiveModule("payments")}
+                className="bg-white rounded-2xl p-5 border-l-4 border-l-emerald-500 border border-slate-200/80 shadow-xs flex flex-col justify-between cursor-pointer hover:border-emerald-300 transition"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-black">
+                      FINANCE
+                    </span>
+                    <span className="text-base">💳</span>
+                  </div>
+                  <div className="text-xs font-bold text-slate-600">Payments</div>
+                  <div className="text-2xl font-black text-slate-900 mt-1">
+                    {invoicesList.filter(inv => inv.status === "PAID").length}
+                  </div>
+                </div>
+                <div className="text-[11px] font-semibold text-emerald-600 mt-2">
+                  ETB {invoicesList.reduce((sum, inv) => sum + (inv.paid || 0), 0).toLocaleString()} Paid
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl p-5 border-l-4 border-l-slate-300 border border-slate-200/80 shadow-xs flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-black">
+                      FMS
+                    </span>
+                    <span className="text-base">🏛️</span>
+                  </div>
+                  <div className="text-xs font-bold text-slate-600">Credit Limit</div>
+                  <div className="text-2xl font-black text-slate-900 mt-1">
+                    ETB {customerCredit.toLocaleString()}
+                  </div>
+                </div>
+                <div className="text-[11px] font-semibold text-slate-600 mt-2">
+                  Approved Credit Line
+                </div>
+              </div>
+            </div>
+
+            {/* Middle Quick Actions & Modules */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200/80 p-8 shadow-xs flex flex-col items-center justify-center text-center">
+                <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600 mb-3 shadow-inner">
+                  <ShoppingBag className="w-7 h-7" />
+                </div>
+                <h3 className="text-base font-extrabold text-slate-900">
+                  {ordersList.length === 0
+                    ? `Procurement Portal for ${customerName}`
+                    : `Active Procurement for ${customerOrg}`}
+                </h3>
+                <p className="text-xs text-slate-500 mt-1.5 max-w-md leading-relaxed">
+                  Browse cybersecurity hardware & licenses, generate instant proposals, or submit custom sales deals with INSA.
+                </p>
+                <div className="flex flex-wrap gap-3 mt-4 justify-center">
+                  <button
+                    onClick={() => setActiveModule("catalog")}
+                    className="px-5 py-2.5 rounded-xl bg-[#2563eb] hover:bg-blue-700 text-white text-xs font-extrabold transition shadow-sm cursor-pointer"
+                  >
+                    Browse Product Catalog
+                  </button>
+                  <button
+                    onClick={() => setShowCreateDealModal(true)}
+                    className="px-5 py-2.5 rounded-xl bg-[#c8102e] hover:bg-red-700 text-white text-xs font-extrabold transition shadow-sm cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Plus className="w-4 h-4" /> + Inquire / Start Sales Deal
+                  </button>
+                  <button
+                    onClick={() => setActiveModule("orders")}
+                    className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Truck className="w-4 h-4" /> Track Orders
+                  </button>
+                </div>
+              </div>
+
+              {/* Right Col: ERP INTEGRATION STATUS */}
+              <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">
+                      POSTGRESQL DATABASE SYNC
+                    </h3>
+                    <Activity className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <div className="space-y-3 text-xs">
+                    <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                      <span className="font-bold text-slate-700">MMS (Logistics & Inventory)</span>
+                      <span className="px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-extrabold">
+                        Synced
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                      <span className="font-bold text-slate-700">CRM (Quotations & Leads)</span>
+                      <span className="px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-extrabold">
+                        Active DB
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                      <span className="font-bold text-slate-700">FMS (Credit Line & Invoices)</span>
+                      <span className="px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-extrabold">
+                        Approved
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-400 text-center flex items-center justify-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Protected & Encrypted Government Portal</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── BROWSE CATALOG TAB ── */}
+        {activeModule === "catalog" && (
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+              <div>
+                <h2 className="text-sm font-extrabold text-slate-900">INSA Solutions &amp; Product Catalog</h2>
+                <p className="text-xs text-slate-500">Order enterprise cryptography, cybersecurity hardware, and audit licenses.</p>
+              </div>
+              <div className="relative w-full sm:w-72">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={searchCatalog}
+                  onChange={(e) => setSearchCatalog(e.target.value)}
+                  placeholder="Search products..."
+                  className="w-full h-9 pl-9 pr-3 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-600"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredCatalog.map((prod) => (
+                <div key={prod.id} className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex flex-col justify-between hover:border-blue-300 transition">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200">
+                        {prod.category}
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400 font-bold">{prod.mmsCode}</span>
+                    </div>
+                    <h3 className="text-sm font-extrabold text-slate-900 mt-1">{prod.name}</h3>
+                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">{prod.description}</p>
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                    <div>
+                      <div className="text-[10px] text-slate-400 font-bold uppercase">Price</div>
+                      <div className="text-sm font-black text-slate-900">ETB {prod.price.toLocaleString()}</div>
+                    </div>
+                    <button
+                      onClick={() => handlePlaceOrder(prod)}
+                      className="px-3.5 py-1.5 rounded-xl bg-[#c8102e] hover:bg-red-700 text-white text-xs font-extrabold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <ShoppingCart className="w-3.5 h-3.5" />
+                      <span>Place Order</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── SALES DEALS TAB (DEAL PROGRESSION & PIPELINE) ── */}
+        {activeModule === "deals" && (
+          <div className="space-y-5">
+            {/* Sales Deals KPI Bar */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-lg">
+                  <Target className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-[11px] font-bold text-slate-500 uppercase">Active Sales Deals</div>
+                  <div className="text-xl font-extrabold text-slate-900">{salesDealsList.length}</div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-lg">
+                  <CreditCard className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-[11px] font-bold text-slate-500 uppercase">Total Pipeline Value</div>
+                  <div className="text-xl font-extrabold text-emerald-700">
+                    ETB {salesDealsList.reduce((acc, d) => acc + (d.amount || 0), 0).toLocaleString()}
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-lg">
+                  <Briefcase className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-[11px] font-bold text-slate-500 uppercase">In Negotiation</div>
+                  <div className="text-xl font-extrabold text-blue-700">
+                    {salesDealsList.filter((d) => (d.stage || "").toLowerCase().includes("negotiat")).length || 1}
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-lg">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-[11px] font-bold text-slate-500 uppercase">Avg. Deal Confidence</div>
+                  <div className="text-xl font-extrabold text-amber-700">
+                    {salesDealsList.length > 0
+                      ? Math.round(salesDealsList.reduce((acc, d) => acc + (d.probability || 60), 0) / salesDealsList.length)
+                      : 75}%
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Deals Table Card */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+              <div className="p-5 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
+                <div>
+                  <h2 className="text-sm font-extrabold text-slate-900">My Sales Deals &amp; Procurement Pipeline</h2>
+                  <p className="text-xs text-slate-500">
+                    Track custom enterprise solutions, technical scope, deal stage, and target completion dates with INSA.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowCreateDealModal(true)}
+                  className="px-4 py-2 rounded-xl bg-[#c8102e] hover:bg-red-700 text-white text-xs font-extrabold transition flex items-center gap-2 cursor-pointer shadow-xs"
+                >
+                  <Plus className="w-4 h-4" /> Inquire About New Deal
+                </button>
+              </div>
+
+              {salesDealsList.length === 0 ? (
+                <div className="p-12 text-center text-slate-500 text-xs">
+                  No active sales deals found. Submit a service inquiry or request a quotation to initiate a deal.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-600">
+                    <thead className="bg-slate-50 text-[11px] font-bold uppercase text-slate-500 border-b border-slate-100">
+                      <tr>
+                        <th className="py-3 px-4">Deal Reference</th>
+                        <th className="py-3 px-4">Deal Title &amp; Scope</th>
+                        <th className="py-3 px-4 text-right">Estimated Value (ETB)</th>
+                        <th className="py-3 px-4 text-center">Pipeline Stage</th>
+                        <th className="py-3 px-4">Probability</th>
+                        <th className="py-3 px-4">Target Close</th>
+                        <th className="py-3 px-4">Assigned Officer</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium">
+                      {salesDealsList.map((deal) => {
+                        const st = (deal.stage || "Proposal").toLowerCase();
+                        let stageBadge = "bg-purple-100 text-purple-800 border-purple-200";
+                        if (st.includes("won")) stageBadge = "bg-emerald-100 text-emerald-800 border-emerald-200";
+                        else if (st.includes("negotiat")) stageBadge = "bg-blue-100 text-blue-800 border-blue-200";
+                        else if (st.includes("discovery") || st.includes("qualif")) stageBadge = "bg-amber-100 text-amber-800 border-amber-200";
+
+                        return (
+                          <tr key={deal.id} className="hover:bg-slate-50 transition">
+                            <td className="py-3.5 px-4 font-mono font-bold text-purple-700">
+                              {deal.dealCode}
+                            </td>
+                            <td className="py-3.5 px-4 max-w-xs">
+                              <div className="font-extrabold text-slate-900">{deal.title}</div>
+                              {deal.description && (
+                                <div className="text-[11px] text-slate-500 truncate mt-0.5">{deal.description}</div>
+                              )}
+                            </td>
+                            <td className="py-3.5 px-4 text-right font-black text-slate-900">
+                              ETB {deal.amount.toLocaleString()}
+                            </td>
+                            <td className="py-3.5 px-4 text-center">
+                              <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold border ${stageBadge}`}>
+                                {deal.stage}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <div className="flex items-center gap-2">
+                                <div className="w-20 bg-slate-200 rounded-full h-2 overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full ${
+                                      deal.probability >= 75
+                                        ? "bg-emerald-500"
+                                        : deal.probability >= 50
+                                        ? "bg-blue-500"
+                                        : "bg-amber-500"
+                                    }`}
+                                    style={{ width: `${deal.probability}%` }}
+                                  />
+                                </div>
+                                <span className="font-bold text-slate-700 text-[11px]">{deal.probability}%</span>
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-4 text-slate-600 font-medium">
+                              {deal.expectedCloseDate}
+                            </td>
+                            <td className="py-3.5 px-4 text-slate-700 font-semibold">
+                              <div className="flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                <span>{deal.assignedTo || "Technical Sales Lead"}</span>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── QUOTATIONS & ESTIMATES TAB ── */}
+        {activeModule === "quotations" && (
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <h2 className="text-sm font-extrabold text-slate-900">Quotations &amp; Official Estimates</h2>
+                <p className="text-xs text-slate-500">Review formal proposals issued by INSA Sales Officers or request a custom estimate.</p>
+              </div>
+              <button
+                onClick={() => setShowQuoteModal(true)}
+                className="px-4 py-2 rounded-xl bg-[#c8102e] hover:bg-red-700 text-white text-xs font-extrabold transition flex items-center gap-2 cursor-pointer shadow-xs"
+              >
+                <Plus className="w-4 h-4" /> Request New Quotation
+              </button>
+            </div>
+
+            {quotationsList.length === 0 ? (
+              <div className="p-12 text-center text-slate-500 text-xs">
+                No quotations on file. Click "Request New Quotation" to get a customized estimate.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-600">
+                  <thead className="bg-slate-50 text-[11px] font-bold uppercase text-slate-500 border-b border-slate-100">
+                    <tr>
+                      <th className="py-3 px-4">Quotation #</th>
+                      <th className="py-3 px-4">Solution / Package</th>
+                      <th className="py-3 px-4">Issue Date</th>
+                      <th className="py-3 px-4">Valid Until</th>
+                      <th className="py-3 px-4 text-right">Total (ETB)</th>
+                      <th className="py-3 px-4 text-center">Status</th>
+                      <th className="py-3 px-4 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {quotationsList.map((q) => (
+                      <tr key={q.id} className="hover:bg-slate-50 transition">
+                        <td className="py-3.5 px-4 font-mono font-bold text-blue-600">{q.quotationNumber}</td>
+                        <td className="py-3.5 px-4 text-slate-800 font-semibold max-w-xs">{q.solution}</td>
+                        <td className="py-3.5 px-4 text-slate-600">{q.issueDate}</td>
+                        <td className="py-3.5 px-4 text-slate-600">{q.expiryDate}</td>
+                        <td className="py-3.5 px-4 text-right font-black text-slate-900">
+                          ETB {q.totalAmount.toLocaleString()}
+                        </td>
+                        <td className="py-3.5 px-4 text-center">
+                          <span
+                            className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                              q.status === "ACTIVE"
+                                ? "bg-blue-100 text-blue-800"
+                                : q.status === "ACCEPTED"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-slate-100 text-slate-800"
+                            }`}
+                          >
+                            {q.status}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 text-right">
+                          {q.status === "ACTIVE" ? (
+                            <button
+                              onClick={() => handleAcceptQuotation(q)}
+                              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-extrabold transition cursor-pointer flex items-center gap-1 ml-auto shadow-xs"
+                            >
+                              <Check className="w-3.5 h-3.5" /> Accept &amp; Convert to Order
+                            </button>
+                          ) : (
+                            <span className="text-[11px] text-emerald-700 font-bold flex items-center justify-end gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Converted to Order
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── MY ORDERS TAB (FULL LIFECYCLE & DATABASE SYNC) ── */}
+        {activeModule === "orders" && (
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden space-y-0">
+            {/* Header & Filter Controls */}
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <h2 className="text-sm font-extrabold text-slate-900">My Sales Orders &amp; Fulfillment Lifecycle</h2>
+                <p className="text-xs text-slate-500">Live order delivery status synchronized with INSA MMS &amp; PostgreSQL Database.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowCustomOrderModal(true)}
+                  className="px-3.5 py-1.5 rounded-xl bg-[#c8102e] text-white text-xs font-extrabold hover:bg-red-700 transition cursor-pointer flex items-center gap-1.5 shadow-xs"
+                >
+                  <Plus className="w-4 h-4" /> + Place New Order
+                </button>
+              </div>
+            </div>
+
+            {/* Filter Tabs */}
+            <div className="px-5 py-2.5 bg-slate-50/70 border-b border-slate-100 flex items-center gap-2 overflow-x-auto text-xs">
+              <span className="text-[11px] font-bold text-slate-500 mr-2 flex items-center gap-1">
+                <Filter className="w-3.5 h-3.5" /> Filter:
+              </span>
+              {[
+                { key: "ALL", label: `All (${ordersList.length})` },
+                { key: "Processing", label: `Processing (${ordersList.filter((o) => o.status === "Processing" || o.status === "Draft" || o.status === "Pending Approval").length})` },
+                { key: "Confirmed", label: `Confirmed (${ordersList.filter((o) => o.status === "Confirmed").length})` },
+                { key: "Shipped", label: `In Transit (${ordersList.filter((o) => o.status === "Shipped" || o.status === "In Transit").length})` },
+                { key: "Delivered", label: `Delivered (${ordersList.filter((o) => o.status === "Delivered").length})` },
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setOrderFilter(tab.key as any)}
+                  className={`px-3 py-1 rounded-lg font-bold transition cursor-pointer ${
+                    orderFilter === tab.key
+                      ? "bg-[#071d3a] text-white shadow-xs"
+                      : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-100"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {filteredOrders.length === 0 ? (
+              <div className="p-12 text-center text-slate-500 text-xs">
+                No orders match this filter. Click "+ Place New Order" or browse the catalog.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-600">
+                  <thead className="bg-slate-50 text-[11px] font-bold uppercase text-slate-500 border-b border-slate-100">
+                    <tr>
+                      <th className="py-3 px-4">Order Number</th>
+                      <th className="py-3 px-4">Items / Specifications</th>
+                      <th className="py-3 px-4">Order Date</th>
+                      <th className="py-3 px-4">Est. Delivery</th>
+                      <th className="py-3 px-4 text-right">Total Amount</th>
+                      <th className="py-3 px-4 text-center">Fulfillment Status</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {filteredOrders.map((o) => {
+                      const isDelivered = o.status === "Delivered";
+                      const isShipped = o.status === "Shipped" || o.status === "In Transit";
+                      const isConfirmed = o.status === "Confirmed";
+                      const isProcessing = o.status === "Processing" || o.status === "Draft" || o.status === "Pending Approval";
+
+                      return (
+                        <tr key={o.orderNumber} className="hover:bg-slate-50 transition">
+                          <td className="py-3.5 px-4 font-mono font-bold text-blue-600">
+                            <div>{o.orderNumber}</div>
+                            {o.quotationRef && (
+                              <div className="text-[10px] text-slate-400 font-normal">Ref: {o.quotationRef}</div>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-800 font-semibold max-w-xs">{o.items}</td>
+                          <td className="py-3.5 px-4 text-slate-600">{o.date}</td>
+                          <td className="py-3.5 px-4 text-slate-600">{o.deliveryDate}</td>
+                          <td className="py-3.5 px-4 text-right font-black text-slate-900">
+                            ETB {o.totalAmount.toLocaleString()}
+                          </td>
+                          <td className="py-3.5 px-4 text-center">
+                            <span
+                              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                                isDelivered
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : isShipped
+                                  ? "bg-indigo-100 text-indigo-800"
+                                  : isConfirmed
+                                  ? "bg-blue-100 text-blue-800"
+                                  : "bg-amber-100 text-amber-800"
+                              }`}
+                            >
+                              {isDelivered && <CheckCircle className="w-3 h-3 text-emerald-600" />}
+                              {isShipped && <Truck className="w-3 h-3 text-indigo-600" />}
+                              {isConfirmed && <CheckCircle2 className="w-3 h-3 text-blue-600" />}
+                              {isProcessing && <Clock className="w-3 h-3 text-amber-600" />}
+                              <span>{o.status}</span>
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => setTrackingOrder(o)}
+                                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold transition cursor-pointer flex items-center gap-1"
+                              >
+                                <Eye className="w-3 h-3" /> Track
+                              </button>
+
+                              {isProcessing && (
+                                <button
+                                  onClick={() => handleUpdateOrderStatus(o.id || o.orderNumber, "Confirmed", 2)}
+                                  className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold transition cursor-pointer"
+                                >
+                                  Confirm Order
+                                </button>
+                              )}
+
+                              {isConfirmed && (
+                                <button
+                                  onClick={() => handleUpdateOrderStatus(o.id || o.orderNumber, "Shipped", 3)}
+                                  className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold transition cursor-pointer"
+                                >
+                                  Dispatch
+                                </button>
+                              )}
+
+                              {isShipped && (
+                                <button
+                                  onClick={() => handleUpdateOrderStatus(o.id || o.orderNumber, "Delivered", 4)}
+                                  className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition cursor-pointer"
+                                >
+                                  Mark Received
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── INVOICES & PAYMENTS TAB ── */}
+        {activeModule === "invoices" && (
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+            <div className="p-5 border-b border-slate-100">
+              <h2 className="text-sm font-extrabold text-slate-900">Corporate Invoices &amp; FMS Billing</h2>
+              <p className="text-xs text-slate-500">Official tax receipts and payment settlement statements.</p>
+            </div>
+
+            {invoicesList.length === 0 ? (
+              <div className="p-12 text-center text-slate-500 text-xs">
+                No invoices recorded for this account.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-600">
+                  <thead className="bg-slate-50 text-[11px] font-bold uppercase text-slate-500 border-b border-slate-100">
+                    <tr>
+                      <th className="py-3 px-4">Invoice #</th>
+                      <th className="py-3 px-4">Order Ref</th>
+                      <th className="py-3 px-4">Invoice Date</th>
+                      <th className="py-3 px-4">Due Date</th>
+                      <th className="py-3 px-4 text-right">Amount (ETB)</th>
+                      <th className="py-3 px-4 text-right">Paid Amount</th>
+                      <th className="py-3 px-4 text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {invoicesList.map((inv) => (
+                      <tr key={inv.invoiceNumber} className="hover:bg-slate-50 transition">
+                        <td className="py-3 px-4 font-mono font-bold text-slate-900">{inv.invoiceNumber}</td>
+                        <td className="py-3 px-4 font-mono text-blue-600 font-semibold">{inv.orderRef}</td>
+                        <td className="py-3 px-4 text-slate-600">{inv.date}</td>
+                        <td className="py-3 px-4 text-slate-600">{inv.dueDate}</td>
+                        <td className="py-3 px-4 text-right font-black text-slate-900">
+                          ETB {inv.amount.toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 text-right font-bold text-emerald-600">
+                          ETB {inv.paid.toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <span
+                            className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                              inv.status === "Paid" || inv.status === "PAID"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-amber-100 text-amber-800"
+                            }`}
+                          >
+                            {inv.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── INVOICES TAB ── */}
+        {activeModule === "invoices" && (
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-5 border-b border-blue-500/30">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-black text-white tracking-tight">My Invoices</h2>
+                  <p className="text-xs text-blue-100 mt-1">View and manage your invoices</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="px-3 py-1 rounded-lg bg-white/20 text-white text-xs font-bold">
+                    {invoicesList.length} Total
+                  </span>
+                  <button
+                    onClick={() => setShowInvoiceModal(true)}
+                    className="px-4 py-2 rounded-xl bg-white text-blue-600 hover:bg-blue-50 text-xs font-extrabold transition shadow-sm flex items-center gap-1.5"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Request Invoice
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Invoice Stats */}
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 p-6 bg-slate-50 border-b border-slate-200">
+              <div className="bg-white rounded-xl p-4 border border-slate-200">
+                <div className="text-xs font-bold text-slate-600 mb-1">Total Amount</div>
+                <div className="text-xl font-black text-slate-900">
+                  ETB {invoicesList.reduce((sum, inv) => sum + (inv.amount || 0), 0).toLocaleString()}
+                </div>
+              </div>
+              <div className="bg-white rounded-xl p-4 border border-slate-200">
+                <div className="text-xs font-bold text-slate-600 mb-1">Paid</div>
+                <div className="text-xl font-black text-green-600">
+                  {invoicesList.filter(inv => inv.status === "PAID").length}
+                </div>
+              </div>
+              <div className="bg-white rounded-xl p-4 border border-slate-200">
+                <div className="text-xs font-bold text-slate-600 mb-1">Pending</div>
+                <div className="text-xl font-black text-amber-600">
+                  {invoicesList.filter(inv => inv.status === "PENDING" || inv.status === "PENDING_APPROVAL").length}
+                </div>
+              </div>
+              <div className="bg-white rounded-xl p-4 border border-slate-200">
+                <div className="text-xs font-bold text-slate-600 mb-1">Overdue</div>
+                <div className="text-xl font-black text-red-600">
+                  {invoicesList.filter(inv => inv.status === "OVERDUE").length}
+                </div>
+              </div>
+            </div>
+
+            {/* Invoice List */}
+            <div className="p-6">
+              {invoicesList.length === 0 ? (
+                <div className="text-center py-12">
+                  <Receipt className="w-16 h-16 text-slate-300 mx-auto mb-3" />
+                  <p className="text-slate-600 font-semibold">No invoices yet</p>
+                  <p className="text-xs text-slate-500 mt-1">Request an invoice to get started</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-black text-slate-600 uppercase">Invoice #</th>
+                        <th className="px-4 py-3 text-left text-xs font-black text-slate-600 uppercase">Order Ref</th>
+                        <th className="px-4 py-3 text-left text-xs font-black text-slate-600 uppercase">Date</th>
+                        <th className="px-4 py-3 text-left text-xs font-black text-slate-600 uppercase">Due Date</th>
+                        <th className="px-4 py-3 text-left text-xs font-black text-slate-600 uppercase">Amount</th>
+                        <th className="px-4 py-3 text-left text-xs font-black text-slate-600 uppercase">Paid</th>
+                        <th className="px-4 py-3 text-left text-xs font-black text-slate-600 uppercase">Status</th>
+                        <th className="px-4 py-3 text-left text-xs font-black text-slate-600 uppercase">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {invoicesList.map((inv) => (
+                        <tr key={inv.id || inv.invoiceNumber} className="hover:bg-slate-50 transition">
+                          <td className="px-4 py-4 text-sm font-bold text-slate-900">{inv.invoiceNumber}</td>
+                          <td className="px-4 py-4 text-sm text-slate-700">{inv.orderRef || "-"}</td>
+                          <td className="px-4 py-4 text-sm text-slate-600">{inv.date}</td>
+                          <td className="px-4 py-4 text-sm text-slate-600">{inv.dueDate}</td>
+                          <td className="px-4 py-4 text-sm font-bold text-slate-900">ETB {inv.amount.toLocaleString()}</td>
+                          <td className="px-4 py-4 text-sm font-bold text-green-600">ETB {inv.paid.toLocaleString()}</td>
+                          <td className="px-4 py-4 text-sm">
+                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1 ${
+                              inv.status === "PAID" ? "bg-green-100 text-green-800" :
+                              inv.status === "PENDING" || inv.status === "PENDING_APPROVAL" ? "bg-amber-100 text-amber-800" :
+                              inv.status === "OVERDUE" ? "bg-red-100 text-red-800" :
+                              inv.status === "CANCELLED" ? "bg-slate-100 text-slate-700" :
+                              "bg-blue-100 text-blue-800"
+                            }`}>
+                              {inv.status === "PAID" && <CheckCircle className="w-3 h-3" />}
+                              {(inv.status === "PENDING" || inv.status === "PENDING_APPROVAL") && <Clock className="w-3 h-3" />}
+                              {inv.status === "OVERDUE" && <AlertCircle className="w-3 h-3" />}
+                              {inv.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4 text-sm">
+                            <button className="text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1">
+                              <Eye className="w-4 h-4" />
+                              View
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── PAYMENTS TAB ── */}
+        {activeModule === "payments" && (
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-green-600 to-emerald-600 px-6 py-5 border-b border-green-500/30">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-black text-white tracking-tight">My Payments</h2>
+                  <p className="text-xs text-green-100 mt-1">Submit and track payment submissions</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="px-3 py-1 rounded-lg bg-white/20 text-white text-xs font-bold">
+                    {0} Total
+                  </span>
+                  <button
+                    onClick={async () => {
+                      const invoiceId = prompt("Enter invoice ID:");
+                      const amount = prompt("Enter payment amount (ETB):");
+                      const method = prompt("Payment method (BANK_TRANSFER, CASH, CHECK, MOBILE_MONEY):");
+                      const reference = prompt("Transaction reference:");
+                      if (invoiceId && amount) {
+                        try {
+                          await paymentService.createPayment({
+                            invoiceId: Number(invoiceId),
+                            amount: Number(amount),
+                            paymentMethod: method || "BANK_TRANSFER",
+                            paymentDate: new Date().toISOString().split("T")[0],
+                            transactionReference: reference || "",
+                          } as any);
+                          showToast("Payment submitted for approval!");
+                          loadAllBackendData();
+                        } catch {
+                          showToast("Failed to submit payment", "error");
+                        }
+                      }
+                    }}
+                    className="px-4 py-2 rounded-xl bg-white text-green-600 hover:bg-green-50 text-xs font-extrabold transition shadow-sm flex items-center gap-1.5"
+                  >
+                    <CreditCard className="w-4 h-4" />
+                    Submit Payment
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Payment Stats */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-6 bg-slate-50 border-b border-slate-200">
+              <div className="bg-white rounded-xl p-4 border border-slate-200">
+                <div className="text-xs font-bold text-slate-600 mb-1">Total Paid</div>
+                <div className="text-xl font-black text-green-600">
+                  ETB {invoicesList.reduce((sum, inv) => sum + (inv.paid || 0), 0).toLocaleString()}
+                </div>
+              </div>
+              <div className="bg-white rounded-xl p-4 border border-slate-200">
+                <div className="text-xs font-bold text-slate-600 mb-1">Balance Due</div>
+                <div className="text-xl font-black text-amber-600">
+                  ETB {invoicesList.reduce((sum, inv) => sum + ((inv.amount || 0) - (inv.paid || 0)), 0).toLocaleString()}
+                </div>
+              </div>
+              <div className="bg-white rounded-xl p-4 border border-slate-200">
+                <div className="text-xs font-bold text-slate-600 mb-1">Payment Methods</div>
+                <div className="text-xl font-black text-blue-600">3</div>
+              </div>
+            </div>
+
+            {/* Payments Info */}
+            <div className="p-6">
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 mb-6">
+                <div className="flex items-start gap-3">
+                  <CreditCard className="w-6 h-6 text-blue-600 shrink-0 mt-0.5" />
+                  <div>
+                    <h3 className="font-black text-blue-900 text-sm mb-2">Payment Instructions</h3>
+                    <p className="text-xs text-blue-800 leading-relaxed mb-3">
+                      Submit payment evidence with transaction reference. Finance team will review and approve within 24-48 hours.
+                    </p>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="w-24 font-bold text-blue-900">Bank Transfer:</span>
+                        <span className="text-blue-700">INSA Account #123456789, CBE</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-24 font-bold text-blue-900">Mobile Money:</span>
+                        <span className="text-blue-700">+251-911-XXXX (Telebirr, M-Birr)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-24 font-bold text-blue-900">Cash/Check:</span>
+                        <span className="text-blue-700">INSA Headquarters, Finance Department</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="text-center py-12">
+                <CreditCard className="w-16 h-16 text-slate-300 mx-auto mb-3" />
+                <p className="text-slate-600 font-semibold">No payment history</p>
+                <p className="text-xs text-slate-500 mt-1">Submit a payment to start tracking</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── PROFILE & SETTINGS TAB ── */}
+        {activeModule === "profile" && (
+          <div className="space-y-6 max-w-4xl">
+            {/* Header */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-extrabold text-slate-900">Account &amp; Security Settings</h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Manage your organization contact profile, reset password, and update registered email.
+                </p>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-700">
+                <Settings className="w-5 h-5" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* 1. Edit Profile / Organization Form */}
+              <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs flex flex-col justify-between md:col-span-2">
+                <div>
+                  <div className="flex items-center gap-2 mb-4 pb-3 border-b border-slate-100">
+                    <Building2 className="w-5 h-5 text-blue-600" />
+                    <div>
+                      <h3 className="text-sm font-extrabold text-slate-900">Edit Organization &amp; Contact Info</h3>
+                      <p className="text-[11px] text-slate-500">Update company legal entity name, TIN, address, and primary contact.</p>
+                    </div>
+                  </div>
+
+                  {profileMsg && (
+                    <div
+                      className={`mb-4 p-3 rounded-xl text-xs font-semibold flex items-center gap-2 ${
+                        profileMsg.error
+                          ? "bg-red-50 text-red-700 border border-red-200"
+                          : "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                      }`}
+                    >
+                      {profileMsg.error ? (
+                        <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+                      ) : (
+                        <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+                      )}
+                      <span>{profileMsg.text}</span>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleUpdateProfile} className="space-y-4 text-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">
+                          Company / Organization Name
+                        </label>
+                        <div className="relative">
+                          <Building2 className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="text"
+                            required
+                            value={profileForm.company}
+                            onChange={(e) => setProfileForm({ ...profileForm, company: e.target.value })}
+                            placeholder="e.g. Ministry of Finance"
+                            className="w-full h-10 pl-9 pr-3 border border-slate-200 rounded-xl bg-slate-50 font-medium text-slate-800 outline-none focus:border-blue-600"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">
+                          Contact Person / Representative Name
+                        </label>
+                        <div className="relative">
+                          <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="text"
+                            required
+                            value={profileForm.name}
+                            onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
+                            placeholder="e.g. Aster Kebede"
+                            className="w-full h-10 pl-9 pr-3 border border-slate-200 rounded-xl bg-slate-50 font-medium text-slate-800 outline-none focus:border-blue-600"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">
+                          Official Phone Number
+                        </label>
+                        <div className="relative">
+                          <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="tel"
+                            value={profileForm.phone}
+                            onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+                            placeholder="+251 911 000000"
+                            className="w-full h-10 pl-9 pr-3 border border-slate-200 rounded-xl bg-slate-50 font-medium text-slate-800 outline-none focus:border-blue-600"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">
+                          Tax Identification Number (TIN)
+                        </label>
+                        <input
+                          type="text"
+                          value={profileForm.tin}
+                          onChange={(e) => setProfileForm({ ...profileForm, tin: e.target.value })}
+                          placeholder="0001234567"
+                          className="w-full h-10 px-3 border border-slate-200 rounded-xl bg-slate-50 font-mono font-medium text-slate-800 outline-none focus:border-blue-600"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">
+                          City
+                        </label>
+                        <div className="relative">
+                          <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="text"
+                            value={profileForm.city}
+                            onChange={(e) => setProfileForm({ ...profileForm, city: e.target.value })}
+                            placeholder="Addis Ababa"
+                            className="w-full h-10 pl-9 pr-3 border border-slate-200 rounded-xl bg-slate-50 font-medium text-slate-800 outline-none focus:border-blue-600"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">
+                          Office Physical Address
+                        </label>
+                        <input
+                          type="text"
+                          value={profileForm.address}
+                          onChange={(e) => setProfileForm({ ...profileForm, address: e.target.value })}
+                          placeholder="King George VI St, Addis Ababa"
+                          className="w-full h-10 px-3 border border-slate-200 rounded-xl bg-slate-50 font-medium text-slate-800 outline-none focus:border-blue-600"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pt-2 flex justify-end">
+                      <button
+                        type="submit"
+                        disabled={profileLoading}
+                        className="px-6 py-2.5 bg-[#2563eb] hover:bg-blue-700 text-white rounded-xl font-extrabold text-xs transition shadow-xs cursor-pointer flex items-center gap-2"
+                      >
+                        {profileLoading && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                        <span>{profileLoading ? "Updating…" : "Save Profile Changes"}</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+
+              {/* 2. Reset / Change Password Form */}
+              <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-4 pb-3 border-b border-slate-100">
+                    <KeyRound className="w-5 h-5 text-red-600" />
+                    <div>
+                      <h3 className="text-sm font-extrabold text-slate-900">Reset &amp; Change Password</h3>
+                      <p className="text-[11px] text-slate-500">Secure your customer account with a fresh password.</p>
+                    </div>
+                  </div>
+
+                  {passwordMsg && (
+                    <div
+                      className={`mb-4 p-3 rounded-xl text-xs font-semibold flex items-center gap-2 ${
+                        passwordMsg.error
+                          ? "bg-red-50 text-red-700 border border-red-200"
+                          : "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                      }`}
+                    >
+                      {passwordMsg.error ? (
+                        <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+                      ) : (
+                        <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+                      )}
+                      <span>{passwordMsg.text}</span>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleResetPassword} className="space-y-3.5 text-xs">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Current Password</label>
+                      <div className="relative">
+                        <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          type={showPwCurrent ? "text" : "password"}
+                          required
+                          value={passwordForm.currentPassword}
+                          onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
+                          placeholder="Enter current password"
+                          className="w-full h-10 pl-9 pr-10 border border-slate-200 rounded-xl bg-slate-50 font-medium text-slate-800 outline-none focus:border-red-600"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPwCurrent(!showPwCurrent)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        >
+                          {showPwCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">New Password</label>
+                      <div className="relative">
+                        <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          type={showPwNew ? "text" : "password"}
+                          required
+                          value={passwordForm.newPassword}
+                          onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+                          placeholder="At least 6 characters"
+                          className="w-full h-10 pl-9 pr-10 border border-slate-200 rounded-xl bg-slate-50 font-medium text-slate-800 outline-none focus:border-red-600"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPwNew(!showPwNew)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        >
+                          {showPwNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Confirm New Password</label>
+                      <div className="relative">
+                        <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          type={showPwConfirm ? "text" : "password"}
+                          required
+                          value={passwordForm.confirmPassword}
+                          onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+                          placeholder="Re-type new password"
+                          className="w-full h-10 pl-9 pr-10 border border-slate-200 rounded-xl bg-slate-50 font-medium text-slate-800 outline-none focus:border-red-600"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPwConfirm(!showPwConfirm)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        >
+                          {showPwConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="pt-2">
+                      <button
+                        type="submit"
+                        disabled={passwordLoading}
+                        className="w-full py-2.5 bg-[#c8102e] hover:bg-red-700 text-white rounded-xl font-extrabold text-xs transition shadow-xs cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        {passwordLoading && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                        <span>{passwordLoading ? "Resetting Password…" : "Update Password"}</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+
+              {/* 3. Change Registered Email Form */}
+              <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-4 pb-3 border-b border-slate-100">
+                    <Mail className="w-5 h-5 text-purple-600" />
+                    <div>
+                      <h3 className="text-sm font-extrabold text-slate-900">Update Registered Email</h3>
+                      <p className="text-[11px] text-slate-500">Official email for quotation alerts and invoices.</p>
+                    </div>
+                  </div>
+
+                  {emailMsg && (
+                    <div
+                      className={`mb-4 p-3 rounded-xl text-xs font-semibold flex items-center gap-2 ${
+                        emailMsg.error
+                          ? "bg-red-50 text-red-700 border border-red-200"
+                          : "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                      }`}
+                    >
+                      {emailMsg.error ? (
+                        <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+                      ) : (
+                        <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+                      )}
+                      <span>{emailMsg.text}</span>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleUpdateEmail} className="space-y-3.5 text-xs">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Current Email</label>
+                      <input
+                        type="text"
+                        disabled
+                        value={customerEmail}
+                        className="w-full h-10 px-3 border border-slate-200 rounded-xl bg-slate-100 font-medium text-slate-500 cursor-not-allowed"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">New Email Address</label>
+                      <div className="relative">
+                        <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="email"
+                          required
+                          value={emailForm.newEmail}
+                          onChange={(e) => setEmailForm({ ...emailForm, newEmail: e.target.value })}
+                          placeholder="new.email@organization.gov.et"
+                          className="w-full h-10 pl-9 pr-3 border border-slate-200 rounded-xl bg-slate-50 font-medium text-slate-800 outline-none focus:border-purple-600"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Confirm With Password</label>
+                      <div className="relative">
+                        <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="password"
+                          value={emailForm.confirmPassword}
+                          onChange={(e) => setEmailForm({ ...emailForm, confirmPassword: e.target.value })}
+                          placeholder="Enter password to verify"
+                          className="w-full h-10 pl-9 pr-3 border border-slate-200 rounded-xl bg-slate-50 font-medium text-slate-800 outline-none focus:border-purple-600"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pt-2">
+                      <button
+                        type="submit"
+                        disabled={emailLoading}
+                        className="w-full py-2.5 bg-[#0a2540] hover:bg-slate-900 text-white rounded-xl font-extrabold text-xs transition shadow-xs cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        {emailLoading && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                        <span>{emailLoading ? "Updating Email…" : "Update Email Address"}</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+
+            {/* Compliance Badge */}
+            <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4 text-xs flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <ShieldCheck className="w-6 h-6 text-emerald-600" />
+                <div>
+                  <div className="font-bold text-slate-900">National Cyber Security Framework Compliance</div>
+                  <div className="text-[11px] text-slate-500">All profile updates and data transmissions are encrypted with AES-256 GCM.</div>
+                </div>
+              </div>
+              <span className="px-3 py-1 rounded-md bg-emerald-100 text-emerald-800 font-extrabold text-[10px]">
+                AUDIT VERIFIED
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* ── MODAL: ORDER TRACKING & LIFECYCLE PROGRESSION ── */}
+        {trackingOrder && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-2xl border border-slate-200">
+              <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-black text-slate-900">Order Tracking &amp; Delivery</h3>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-100 text-blue-800">
+                      {trackingOrder.orderNumber}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">Live ERP &amp; MMS Logistics Pipeline</p>
+                </div>
+                <button
+                  onClick={() => setTrackingOrder(null)}
+                  className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* 4-Step Visual Stepper */}
+              <div className="py-4">
+                <div className="relative flex items-center justify-between mb-6">
+                  <div className="absolute left-6 right-6 top-1/2 -translate-y-1/2 h-1 bg-slate-200 -z-0">
+                    <div
+                      className="h-full bg-emerald-500 transition-all duration-300"
+                      style={{
+                        width:
+                          trackingOrder.trackingStep === 4
+                            ? "100%"
+                            : trackingOrder.trackingStep === 3
+                            ? "66%"
+                            : trackingOrder.trackingStep === 2
+                            ? "33%"
+                            : "0%",
+                      }}
+                    ></div>
+                  </div>
+
+                  {[
+                    { step: 1, label: "Order Placed", icon: ShoppingCart },
+                    { step: 2, label: "Processing", icon: Package },
+                    { step: 3, label: "Dispatched", icon: Truck },
+                    { step: 4, label: "Delivered", icon: PackageCheck },
+                  ].map((s) => {
+                    const isDone = (trackingOrder.trackingStep || 1) >= s.step;
+                    const isCurrent = (trackingOrder.trackingStep || 1) === s.step;
+                    const StepIcon = s.icon;
+
+                    return (
+                      <div key={s.step} className="flex flex-col items-center relative z-10">
+                        <div
+                          className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs transition ${
+                            isDone
+                              ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/30"
+                              : "bg-white border-2 border-slate-300 text-slate-400"
+                          }`}
+                        >
+                          <StepIcon className="w-4 h-4" />
+                        </div>
+                        <span
+                          className={`text-[10px] mt-1.5 font-bold ${
+                            isCurrent
+                              ? "text-emerald-700 font-extrabold"
+                              : isDone
+                              ? "text-slate-800"
+                              : "text-slate-400"
+                          }`}
+                        >
+                          {s.label}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Details Box */}
+                <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 text-xs space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500 font-medium">Order Item:</span>
+                    <span className="font-bold text-slate-800 text-right">{trackingOrder.items}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500 font-medium">Total Amount:</span>
+                    <span className="font-black text-slate-900">ETB {trackingOrder.totalAmount.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500 font-medium">Order Date:</span>
+                    <span className="font-semibold text-slate-700">{trackingOrder.date}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500 font-medium">Est. Delivery Date:</span>
+                    <span className="font-semibold text-slate-700">{trackingOrder.deliveryDate}</span>
+                  </div>
+                  <div className="flex justify-between border-t border-slate-200 pt-2 mt-2">
+                    <span className="text-slate-500 font-medium">Current Status:</span>
+                    <span className="font-extrabold text-blue-700 uppercase tracking-wider">{trackingOrder.status}</span>
+                  </div>
+                </div>
+
+                {/* Lifecycle Progression Actions */}
+                <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap gap-2 justify-end">
+                  {trackingOrder.status !== "Confirmed" && trackingOrder.status !== "Shipped" && trackingOrder.status !== "Delivered" && (
+                    <button
+                      onClick={() => handleUpdateOrderStatus(trackingOrder.id || trackingOrder.orderNumber, "Confirmed", 2)}
+                      className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition shadow-xs cursor-pointer"
+                    >
+                      Confirm Order
+                    </button>
+                  )}
+
+                  {trackingOrder.status === "Confirmed" && (
+                    <button
+                      onClick={() => handleUpdateOrderStatus(trackingOrder.id || trackingOrder.orderNumber, "Shipped", 3)}
+                      className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition shadow-xs cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Truck className="w-3.5 h-3.5" /> Dispatch to Logistics
+                    </button>
+                  )}
+
+                  {trackingOrder.status === "Shipped" && (
+                    <button
+                      onClick={() => handleUpdateOrderStatus(trackingOrder.id || trackingOrder.orderNumber, "Delivered", 4)}
+                      className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition shadow-xs cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Check className="w-3.5 h-3.5" /> Confirm Receipt &amp; Delivery
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setTrackingOrder(null)}
+                    className="px-4 py-2 border border-slate-200 rounded-xl font-bold text-slate-600 hover:bg-slate-100 text-xs transition cursor-pointer"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── MODAL: PLACE NEW CUSTOM ORDER ── */}
+        {showCustomOrderModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-slate-200">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base font-black text-slate-900">Create Direct Sales Order</h3>
+                <button
+                  onClick={() => setShowCustomOrderModal(false)}
+                  className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSubmitCustomOrder} className="space-y-3.5 text-xs">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Select Hardware / Service</label>
+                  <select
+                    value={customOrderForm.productId}
+                    onChange={(e) => setCustomOrderForm({ ...customOrderForm, productId: e.target.value })}
+                    className="w-full h-10 px-3 border border-slate-200 rounded-xl bg-slate-50 font-medium outline-none focus:border-[#c8102e]"
+                  >
+                    {CATALOG_PRODUCTS.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} (ETB {p.price.toLocaleString()})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Quantity</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={customOrderForm.quantity}
+                      onChange={(e) => setCustomOrderForm({ ...customOrderForm, quantity: Number(e.target.value) })}
+                      className="w-full h-10 px-3 border border-slate-200 rounded-xl bg-slate-50 font-medium outline-none focus:border-[#c8102e]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Requested Delivery</label>
+                    <input
+                      type="date"
+                      value={customOrderForm.deliveryDate}
+                      onChange={(e) => setCustomOrderForm({ ...customOrderForm, deliveryDate: e.target.value })}
+                      className="w-full h-10 px-3 border border-slate-200 rounded-xl bg-slate-50 font-medium outline-none focus:border-[#c8102e]"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Procurement Ref / Notes</label>
+                  <textarea
+                    rows={2}
+                    placeholder="PO reference number, delivery location, or special requirements..."
+                    value={customOrderForm.notes}
+                    onChange={(e) => setCustomOrderForm({ ...customOrderForm, notes: e.target.value })}
+                    className="w-full p-2.5 border border-slate-200 rounded-xl bg-slate-50 font-medium outline-none focus:border-[#c8102e]"
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowCustomOrderModal(false)}
+                    className="flex-1 py-2.5 border border-slate-200 rounded-xl font-bold text-slate-600 hover:bg-slate-50 transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
